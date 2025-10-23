@@ -1,5 +1,7 @@
 # App Service Agent Framework Travel Planner
 
+> **Note:** This repository has been converted to Python with FastAPI. The original C# implementation is available in the Git history. For deployment and usage instructions specific to the Python version, see [DEPLOYMENT.md](DEPLOYMENT.md).
+
 A demonstration of building asynchronous, long-running AI applications using the [Microsoft Agent Framework](https://learn.microsoft.com/en-us/agent-framework/overview/agent-framework-overview) on Azure App Service. This sample showcases server-side persistent agents with conversation threads, background processing with Service Bus, and state management with Cosmos DB.
 
 See the blog post for more details: [Build Long-Running AI Agents on Azure App Service with Microsoft Agent Framework](https://techcommunity.microsoft.com/blog/appsonazureblog/build-long-running-ai-agents-on-azure-app-service-with-microsoft-agent-framework/4463159)
