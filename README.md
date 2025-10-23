@@ -250,7 +250,7 @@ This demo uses **Azure Cosmos DB** for state management. Here's why and how it c
 
 ## Prerequisites
 
-- [.NET 9.0 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+- [Python 3.11+](https://www.python.org/downloads/)
 - [Azure Developer CLI (azd)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
 - Azure subscription with permissions to create resources
 - [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) (optional, for manual operations)
@@ -261,8 +261,8 @@ This demo uses **Azure Cosmos DB** for state management. Here's why and how it c
 
 ```bash
 # Clone the repository
-git clone https://github.com/Azure-Samples/app-service-agent-framework-travel-agent-dotnet.git
-cd app-service-agent-framework-travel-agent-dotnet
+git clone https://github.com/Azure-Samples/app-service-agent-framework-travel-agent-python.git
+cd app-service-agent-framework-travel-agent-python
 
 # Login to Azure
 azd auth login

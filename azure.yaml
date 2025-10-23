@@ -13,6 +13,6 @@ infra:
 
 services:
   api:
-    project: ./src/TravelPlanner.Api
-    language: csharp
+    project: .
+    language: python
     host: appservice
