@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     # Shutdown
     logger.info("Shutting down Travel Planner API...")
     if travel_plan_service:
-        travel_plan_service.close()
+        await travel_plan_service.close()
 
 
 # Create FastAPI app

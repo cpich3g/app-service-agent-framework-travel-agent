@@ -6,8 +6,10 @@ from typing import Optional
 from uuid import uuid4
 
 from azure.identity import DefaultAzureCredential
-from azure.servicebus import ServiceBusClient, ServiceBusMessage
-from azure.cosmos import CosmosClient, PartitionKey, exceptions
+from azure.servicebus.aio import ServiceBusClient
+from azure.servicebus import ServiceBusMessage
+from azure.cosmos.aio import CosmosClient
+from azure.cosmos import PartitionKey, exceptions
 
 from ..shared.models import (
     TravelPlanRequest, TravelPlanResponse, TaskStatus, 
@@ -25,48 +27,62 @@ class TravelPlanService:
     def __init__(self, settings: Settings):
         """Initialize the travel plan service"""
         self.settings = settings
+        self._service_bus_client = None
+        self._sender = None
+        self._cosmos_client = None
+        self._container = None
+        self._initialized = False
+    
+    async def _ensure_initialized(self):
+        """Ensure the service is initialized"""
+        if self._initialized:
+            return
         
         # Initialize Service Bus client
-        if settings.service_bus_namespace:
+        if self.settings.service_bus_namespace:
             # Production: Use managed identity
             credential = DefaultAzureCredential()
-            self.service_bus_client = ServiceBusClient(
-                fully_qualified_namespace=settings.service_bus_namespace,
+            self._service_bus_client = ServiceBusClient(
+                fully_qualified_namespace=self.settings.service_bus_namespace,
                 credential=credential
             )
-        elif settings.service_bus_connection_string:
+        elif self.settings.service_bus_connection_string:
             # Local development: Use connection string
-            self.service_bus_client = ServiceBusClient.from_connection_string(
-                settings.service_bus_connection_string
+            self._service_bus_client = ServiceBusClient.from_connection_string(
+                self.settings.service_bus_connection_string
             )
         else:
             raise ValueError("Service Bus configuration is missing")
         
-        self.sender = self.service_bus_client.get_queue_sender(
-            queue_name=settings.service_bus_queue_name
+        self._sender = self._service_bus_client.get_queue_sender(
+            queue_name=self.settings.service_bus_queue_name
         )
         
         # Initialize Cosmos DB client
-        if settings.cosmos_db_endpoint:
+        if self.settings.cosmos_db_endpoint:
             credential = DefaultAzureCredential()
-            self.cosmos_client = CosmosClient(
-                url=settings.cosmos_db_endpoint,
+            self._cosmos_client = CosmosClient(
+                url=self.settings.cosmos_db_endpoint,
                 credential=credential
             )
             
-            database = self.cosmos_client.get_database_client(
-                settings.cosmos_db_database_name
+            database = self._cosmos_client.get_database_client(
+                self.settings.cosmos_db_database_name
             )
-            self.container = database.get_container_client(
-                settings.cosmos_db_container_name
+            self._container = database.get_container_client(
+                self.settings.cosmos_db_container_name
             )
         else:
             raise ValueError("Cosmos DB configuration is missing")
+        
+        self._initialized = True
     
     async def create_travel_plan_async(
         self, request: TravelPlanRequest
     ) -> TravelPlanResponse:
         """Create a new travel plan request and queue it for processing"""
+        await self._ensure_initialized()
+        
         task_id = uuid4().hex
         
         logger.info(
@@ -87,7 +103,7 @@ class TravelPlanService:
             message_id=task_id
         )
         
-        await self.sender.send_messages(message)
+        await self._sender.send_messages(message)
         
         # Store initial status in Cosmos DB
         task_status = TaskStatus(
@@ -114,8 +130,10 @@ class TravelPlanService:
     
     async def get_task_status_async(self, task_id: str) -> Optional[TaskStatus]:
         """Get the current status of a travel planning task"""
+        await self._ensure_initialized()
+        
         try:
-            item = self.container.read_item(
+            item = await self._container.read_item(
                 item=task_id,
                 partition_key=task_id
             )
@@ -127,9 +145,11 @@ class TravelPlanService:
         self, task_id: str
     ) -> Optional[TravelItinerary]:
         """Retrieve the completed travel itinerary for a task"""
+        await self._ensure_initialized()
+        
         try:
             result_id = f"{task_id}_result"
-            item = self.container.read_item(
+            item = await self._container.read_item(
                 item=result_id,
                 partition_key=result_id
             )
@@ -140,11 +160,16 @@ class TravelPlanService:
     
     async def _store_task_status_async(self, status: TaskStatus) -> None:
         """Store task status in Cosmos DB"""
-        self.container.upsert_item(
+        await self._container.upsert_item(
             body=status.model_dump(by_alias=True, mode='json')
         )
     
-    def close(self):
+    async def close(self):
         """Close connections"""
-        self.sender.close()
-        self.service_bus_client.close()
+        if self._sender:
+            await self._sender.close()
+        if self._service_bus_client:
+            await self._service_bus_client.close()
+        if self._cosmos_client:
+            await self._cosmos_client.close()
+

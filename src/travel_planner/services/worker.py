@@ -7,7 +7,8 @@ from datetime import datetime
 from azure.identity import DefaultAzureCredential
 from azure.servicebus.aio import ServiceBusClient
 from azure.servicebus import ServiceBusMessage
-from azure.cosmos import CosmosClient, PartitionKey, exceptions
+from azure.cosmos.aio import CosmosClient
+from azure.cosmos import PartitionKey, exceptions
 
 from ..shared.models import TravelPlanMessage, TaskStatus, TravelItineraryDocument
 from ..shared.constants import TaskStatusConstants
@@ -24,49 +25,63 @@ class TravelPlanWorker:
         """Initialize the worker"""
         self.settings = settings
         self.running = False
+        self._service_bus_client = None
+        self._cosmos_client = None
+        self._container = None
+        self._agent_service = None
+        self._initialized = False
+    
+    async def _ensure_initialized(self):
+        """Ensure the worker is initialized"""
+        if self._initialized:
+            return
         
         # Initialize Service Bus client
-        if settings.service_bus_namespace:
+        if self.settings.service_bus_namespace:
             # Production: Use managed identity
             credential = DefaultAzureCredential()
-            self.service_bus_client = ServiceBusClient(
-                fully_qualified_namespace=settings.service_bus_namespace,
+            self._service_bus_client = ServiceBusClient(
+                fully_qualified_namespace=self.settings.service_bus_namespace,
                 credential=credential
             )
-        elif settings.service_bus_connection_string:
+        elif self.settings.service_bus_connection_string:
             # Local development: Use connection string
-            self.service_bus_client = ServiceBusClient.from_connection_string(
-                settings.service_bus_connection_string
+            self._service_bus_client = ServiceBusClient.from_connection_string(
+                self.settings.service_bus_connection_string
             )
         else:
             raise ValueError("Service Bus configuration is missing")
         
         # Initialize Cosmos DB client
-        if settings.cosmos_db_endpoint:
+        if self.settings.cosmos_db_endpoint:
             credential = DefaultAzureCredential()
-            self.cosmos_client = CosmosClient(
-                url=settings.cosmos_db_endpoint,
+            self._cosmos_client = CosmosClient(
+                url=self.settings.cosmos_db_endpoint,
                 credential=credential
             )
             
-            database = self.cosmos_client.get_database_client(
-                settings.cosmos_db_database_name
+            database = self._cosmos_client.get_database_client(
+                self.settings.cosmos_db_database_name
             )
-            self.container = database.get_container_client(
-                settings.cosmos_db_container_name
+            self._container = database.get_container_client(
+                self.settings.cosmos_db_container_name
             )
         else:
             raise ValueError("Cosmos DB configuration is missing")
         
         # Initialize agent service
-        self.agent_service = TravelAgentService(settings)
+        self._agent_service = TravelAgentService(self.settings)
+        
+        self._initialized = True
     
     async def start(self):
         """Start the worker"""
         logger.info("Travel Planner Worker starting...")
+        await self._ensure_initialized()
+        
         self.running = True
         
-        receiver = self.service_bus_client.get_queue_receiver(
+        receiver = self._service_bus_client.get_queue_receiver(
             queue_name=self.settings.service_bus_queue_name,
             max_wait_time=5
         )
@@ -98,8 +113,12 @@ class TravelPlanWorker:
         """Stop the worker"""
         logger.info("Worker stop requested...")
         self.running = False
-        await self.agent_service.close()
-        await self.service_bus_client.close()
+        if self._agent_service:
+            await self._agent_service.close()
+        if self._service_bus_client:
+            await self._service_bus_client.close()
+        if self._cosmos_client:
+            await self._cosmos_client.close()
     
     async def _process_message(self, message, receiver):
         """Process a single message"""
@@ -113,7 +132,7 @@ class TravelPlanWorker:
             
             # Check if this task is already completed
             try:
-                existing_status = self.container.read_item(
+                existing_status = await self._container.read_item(
                     item=plan_message.task_id,
                     partition_key=plan_message.task_id
                 )
@@ -155,7 +174,7 @@ class TravelPlanWorker:
                 )
             
             # Generate the travel plan
-            itinerary = await self.agent_service.generate_travel_plan_async(
+            itinerary = await self._agent_service.generate_travel_plan_async(
                 plan_message.request,
                 plan_message.task_id,
                 progress_callback
@@ -217,7 +236,7 @@ class TravelPlanWorker:
         # Try to read existing status to preserve CreatedAt timestamp
         created_at = datetime.utcnow()
         try:
-            existing_status = self.container.read_item(
+            existing_status = await self._container.read_item(
                 item=task_id,
                 partition_key=task_id
             )
@@ -239,7 +258,7 @@ class TravelPlanWorker:
             error_message=error_message
         )
         
-        self.container.upsert_item(
+        await self._container.upsert_item(
             body=task_status.model_dump(by_alias=True, mode='json')
         )
         
@@ -255,7 +274,7 @@ class TravelPlanWorker:
             itinerary=itinerary
         )
         
-        self.container.upsert_item(
+        await self._container.upsert_item(
             body=document.model_dump(by_alias=True, mode='json')
         )
         
