@@ -6,7 +6,7 @@
 flowchart TB
     User[User]
     UI[Web UI - Static HTML]
-    AppService[App Service P0v4 - .NET 9.0 API + Background Worker]
+    AppService[App Service P0v4 - Python/FastAPI API + Background Worker]
     ServiceBus[Service Bus - Async Queue]
     Cosmos[Cosmos DB - Task Status & Results]
     AI[Azure AI Foundry - GPT-4o + Agent Framework]

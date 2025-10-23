@@ -1,0 +1,18 @@
+# FastAPI and web framework
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+python-multipart==0.0.12
+
+# Pydantic for data validation
+pydantic==2.9.2
+pydantic-settings==2.6.0
+
+# Azure SDK dependencies
+azure-identity==1.19.0
+azure-servicebus==7.12.3
+azure-cosmos==4.8.0
+azure-ai-inference==1.0.0b5
+
+# Additional dependencies
+python-dotenv==1.0.1
+aiofiles==24.1.0
